@@ -20,7 +20,29 @@ class UserModel {
         if ($this->conn) {
             try {
                 $stmt = $this->conn->query("SELECT * FROM users");
-                return $stmt->fetchAll(PDO::FETCH_ASSOC);
+                $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                $users = [];
+                foreach ($results as $result) {
+                    $user = new User(
+                        $result['UserName'],
+                        $result['Email'],
+                        $result['Password'],
+                        $result['UserID'],
+                        $result['Role']
+                    );
+
+                    $user->setStoryPage($result['StoryPage']);
+
+                    $users[] = [
+                        'username' => $user->getUsername(),
+                        'email' => $user->getEmail(),
+                        'user_id' => $result['UserID'],
+                        'role' => $result['Role'],
+                        'story_page' => $user->getStoryPage()
+                    ];
+                    $this->logger->log($result['UserName']);
+                }
+                return $users; // Return an array of user data arrays
             } catch (PDOException $e) {
                 $this->logger->log("Query failed: " . $e->getMessage());
                 return [];
@@ -33,17 +55,6 @@ class UserModel {
 
     public function __destruct() {
         $this->conn = null;
-    }
-
-    public function getUsers() {
-        $data = $this->getData();
-        $userList = [];
-        
-        foreach ($data as $item) {
-            $userList[] = $item['UserName'];
-        }
-
-        return $userList;
     }
 
     public function getUserById($userId) {
@@ -113,12 +124,14 @@ class UserModel {
             try {
                 $stmt = $this->conn->prepare("DELETE FROM users WHERE UserID = :userId");
                 $stmt->bindParam(':userId', $userId, PDO::PARAM_INT);
+                
                 $stmt->execute();
                 
                 if ($stmt->rowCount() > 0) {
-                    $this->logger->log('User of ID: ' . $userId . ' Deleted');  
+                    $this->logger->log('User with ID: ' . $userId . ' deleted successfully.');  
                     return true;
                 } else {
+                    $this->logger->log('No user found with ID: ' . $userId . '. Deletion failed.'); 
                     return false;
                 }
             } catch (PDOException $e) {
@@ -126,7 +139,7 @@ class UserModel {
                 return false;
             }
         } else {
-            $this->logger->log("No connection.");
+            $this->logger->log("No database connection available.");
             return false;
         }
     }
@@ -165,24 +178,59 @@ class UserModel {
     public function addUser($userName, $email, $password) {
         if ($this->conn) {
             try {
+                // Define regex patterns for password validation
+                $lengthPattern = '/^.{8,20}$/';
+                $numberPattern = '/[0-9]/';
+                $lowercasePattern = '/[a-z]/';
+                $uppercasePattern = '/[A-Z]/';
+    
+                // Initialize an array to hold the validation errors
+                $requirements = [];
+    
+                // Check if the password meets all the requirements
+                if (!preg_match($lengthPattern, $password)) {
+                    $requirements[] = "Password must be between 8 and 20 characters long.";
+                }
+                if (!preg_match($numberPattern, $password)) {
+                    $requirements[] = "Password must contain at least one number.";
+                }
+                if (!preg_match($lowercasePattern, $password)) {
+                    $requirements[] = "Password must contain at least one lowercase letter.";
+                }
+                if (!preg_match($uppercasePattern, $password)) {
+                    $requirements[] = "Password must contain at least one uppercase letter.";
+                }
+    
+                // Throw an exception if there are validation errors
+                if (count($requirements) > 0) {
+                    throw new Exception(implode("\n", $requirements));
+                }
+    
+                // Hash the password
+                $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
+    
                 $stmt = $this->conn->prepare("
                     INSERT INTO users (UserName, Email, Password)
                     VALUES (:userName, :email, :password)
                 ");
                 $stmt->bindParam(':userName', $userName, PDO::PARAM_STR);
                 $stmt->bindParam(':email', $email, PDO::PARAM_STR);
-                $stmt->bindParam(':password', $password, PDO::PARAM_STR);
+                $stmt->bindParam(':password', $hashedPassword, PDO::PARAM_STR);
     
                 $stmt->execute();
     
                 if ($stmt->rowCount() > 0) {
-                    $this->logger->log('User ' . $userName . ' Added Successfully');                    
+                    $this->logger->log('User ' . $userName . ' added successfully.');                    
                     return true;
                 } else {
                     return false;
                 }
             } catch (PDOException $e) {
                 $this->logger->log("Insert failed: " . $e->getMessage());
+                return false;
+            } catch (Exception $e) {
+                // Log the validation error message
+                $this->logger->log("Validation failed for user '$userName': " . $e->getMessage());
                 return false;
             }
         } else {
@@ -241,25 +289,42 @@ class UserModel {
     }
 
     public function validateUser($email, $password) {
-        if ($this->conn) {
-            try {
-                $stmt = $this->conn->prepare("SELECT * FROM users WHERE Email = :email");
-                $stmt->bindParam(':email', $email);
-                $stmt->execute();
-                $user = $stmt->fetch(PDO::FETCH_ASSOC);
+        $this->logger->log("Attempting to validate password for email: " . $email);
     
-                // Directly compare the provided password with the stored password
-                if ($user && $user['Password'] === $password) {
-                    return $user; // Return user data on successful validation
-                }
+        // Check if the database connection is valid
+        if (!$this->conn) {
+            $this->logger->log("No database connection.");
+            return false;
+        }
     
-                return false; // Invalid email or password
-            } catch (PDOException $e) {
-                $this->logger->log("Validation failed: " . $e->getMessage());
-                return false; // Handle any errors
+        try {
+            // Prepare statement to fetch the password hash
+            $stmt = $this->conn->prepare("SELECT Password FROM users WHERE Email = :email");
+            $stmt->bindParam(':email', $email);
+            $stmt->execute();
+            $result = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+            // Check if user exists
+            if (!$result) {
+                $this->logger->log("User not found for email: " . $email);
+                return false; // User does not exist
             }
-        } else {
-            $this->logger->log("No connection.");
+            $this->logger->log("Hashed password:" . $result['Password']);
+            $this->logger->log("Inputted Password:" . $password);
+
+            // Verify the hashed password
+            if (password_verify($password, $result['Password'])) {
+                $this->logger->log("Password validation successful for email: " . $email);
+                return true; // Password is correct
+            } else {
+                $this->logger->log("Password validation failed for email: " . $email);
+                return false; // Incorrect password
+            }
+        } catch (PDOException $e) {
+            $this->logger->log("Validation query failed: " . $e->getMessage());
+            return false;
+        } catch (Exception $e) {
+            $this->logger->log("Validation error: " . $e->getMessage());
             return false;
         }
     }

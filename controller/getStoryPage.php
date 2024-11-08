@@ -1,5 +1,6 @@
 <?php
 require_once '../model/UserModel.php';
+require_once '../utils/jwtUtils.php'; // Ensure you have the validateJWT function in a utils file or include it here
 
 header('Content-Type: application/json');
 
@@ -10,28 +11,39 @@ $response = [
 ];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (isset($_POST['userId'])) {
-        $userId = $_POST['userId'];
+    $token = $_POST['token'] ?? '';
 
-        try {
-            $model = new UserModel();
-            $pageString = $model->getStoryPageById($userId);
+    // Validate the JWT token
+    $payload = validateJWT($token);
+    if ($payload === null) {
+        $response['message'] = 'Invalid or expired token';
+        echo json_encode($response);
+        exit();
+    }
 
-            if ($pageString) {
-                $response['success'] = true;
-                $response['page'] = $pageString;
-                $response['message'] = 'Story page retrieved successfully';
-            } else {
-                $response['message'] = 'Story page not found for user';
-            }
-        } catch (Exception $e) {
-            $response['message'] = "Error: " . $e->getMessage();
+    // Token is valid; retrieve user ID from payload
+    $userId = $payload['user_id'];
+
+    try {
+        $model = new UserModel();
+        $pageString = $model->getStoryPageById($userId);
+
+        if ($pageString) {
+            $response['success'] = true;
+            $response['page'] = $pageString;
+            $response['message'] = 'Story page retrieved successfully';
+            http_response_code(200);
+        } else {
+            $response['message'] = 'Story page not found for user';
+            http_response_code(401);
         }
-    } else {
-        $response['message'] = 'User ID not provided';
+    } catch (Exception $e) {
+        $response['message'] = "Error: " . $e->getMessage();
+        http_response_code(500);
     }
 } else {
     $response['message'] = 'Invalid request method';
+    http_response_code(401);
 }
 
 echo json_encode($response);

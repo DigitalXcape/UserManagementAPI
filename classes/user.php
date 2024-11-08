@@ -6,6 +6,7 @@ class User {
     private $password;
     private $id;
     private $role;
+    private $storyPage;
 
     // Constructor to initialize the object
     public function __construct($username, $email, $password, $id, $role) {
@@ -62,44 +63,27 @@ class User {
     }
 
     public function setPassword($password) {
-        // Define regex patterns for validation
-        $lengthPattern = '/^.{8,20}$/';
-        $numberPattern = '/[0-9]/';
-        $lowercasePattern = '/[a-z]/';
-        $uppercasePattern = '/[A-Z]/';
-    
-        // Initialize an array to hold the validation errors
-        $requirements = [];
-    
-        // Check if the password meets all the requirements
-        if (!preg_match($lengthPattern, $password)) {
-            $requirements[] = "Password must be between 8 and 20 characters long.";
-        }
-        if (!preg_match($numberPattern, $password)) {
-            $requirements[] = "Password must contain at least one number.";
-        }
-        if (!preg_match($lowercasePattern, $password)) {
-            $requirements[] = "Password must contain at least one lowercase letter.";
-        }
-        if (!preg_match($uppercasePattern, $password)) {
-            $requirements[] = "Password must contain at least one uppercase letter.";
-        }
-    
-        // Throw an exception if there are validation errors
-        if (count($requirements) > 0) {
-            throw new Exception(implode("\n", $requirements));
-        } else {
-            // Hash the password and set it if validation is successful
-            $this->password = $password;
-        }
+        $this->password = $password;
     }
 
+    //Gets the role (access level) that the account has
     public function getRole(){
         return $this->role;
     }
 
+    //Sets the role (access level) that the account has
     public function setRole($role){
         $this->role = $role;
+    }
+
+    //Gets the story page that the player is on
+    public function getStoryPage(){
+        return $this->storyPage;
+    }
+
+    //Sets the story page that the player is on
+    public function setStoryPage($storyPage){
+        $this->storyPage = $storyPage;
     }
 
     // Method to display user info (for testing purposes)

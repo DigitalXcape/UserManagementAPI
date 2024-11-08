@@ -3,10 +3,8 @@ require_once '../classes/user.php';
 require_once '../logger/Logger.php';
 require_once '../model/UserModel.php';
 
-// Define a secret key for encoding/decoding the JWT
-define('JWT_SECRET_KEY', 'your_secret_key_here');
+define('JWT_SECRET_KEY', '435dgh47n349sn783hf839db3');
 
-// Set response headers to return JSON
 header('Content-Type: application/json');
 
 $response = [
@@ -15,9 +13,7 @@ $response = [
     'token' => null
 ];
 
-/**
- * Function to generate a JWT token
- */
+// Function to create a JWT
 function generateJWT($header, $payload, $secret = JWT_SECRET_KEY) {
     $base64UrlHeader = base64UrlEncode(json_encode($header));
     $base64UrlPayload = base64UrlEncode(json_encode($payload));
@@ -26,9 +22,6 @@ function generateJWT($header, $payload, $secret = JWT_SECRET_KEY) {
     return $base64UrlHeader . "." . $base64UrlPayload . "." . $base64UrlSignature;
 }
 
-/**
- * Helper function to encode in Base64 URL format
- */
 function base64UrlEncode($data) {
     return str_replace(['+', '/', '='], ['-', '_', ''], base64_encode($data));
 }
@@ -36,6 +29,7 @@ function base64UrlEncode($data) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $logger = Logger::getInstance();
 
+    // Get the email and password sent to the API
     $email = $_POST['email'];
     $password = $_POST['password'];
     $logger->log("Attempting Login with email: $email");
@@ -44,38 +38,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $model = new UserModel();
         $user = $model->getUserByEmail($email);
 
-        if ($user && $password === $user->getPassword()) {
-            // Define the JWT header and payload
+        if ($user && $model->validateUser($email, $password)) {
+            // Set the story page for the user
+            $user->setStoryPage($model->getStoryPageById($user->getId()));
+
+            // Create the JWT header and payload
             $header = ['alg' => 'HS256', 'typ' => 'JWT'];
+
             $payload = [
                 'user_id' => $user->getId(),
                 'username' => $user->getUserName(),
                 'email' => $user->getEmail(),
                 'role' => $user->getRole(),
+                'story_page' => $user->getStoryPage(),
                 'exp' => time() + 3600 
             ];
-        
-            // Generate the JWT
+
             $jwt = generateJWT($header, $payload);
-        
-            // Return the JWT in the response
+
+            // Set the API response variables
             $response['success'] = true;
             $response['message'] = 'Login successful';
             $response['token'] = $jwt;
             $response['username'] = $user->getUserName();
             $response['user_id'] = $user->getId();
             $response['role'] = $user->getRole();
+            http_response_code(200); // OK
 
         } else {
-            // Log the invalid login attempt
             $logger->log("Invalid email or password");
+            http_response_code(401); // Unauthorized
         }
     } catch (Exception $e) {
         $response['message'] = "Error: " . $e->getMessage();
+        http_response_code(500); // Internal Server Error
     }
 }
-
-// Output JSON response with the JWT token if successful
 echo json_encode($response);
 exit();
 ?>

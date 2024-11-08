@@ -1,7 +1,7 @@
 <?php
 require_once '../model/UserModel.php';
+require_once '../logger/Logger.php';
 
-// Set response headers to return JSON
 header('Content-Type: application/json');
 
 $response = [
@@ -9,27 +9,44 @@ $response = [
     'message' => 'User deletion failed'
 ];
 
+try {
+    $logger = Logger::getInstance();
+} catch (Exception $e) {
+    echo json_encode(['success' => false, 'message' => "Logger initialization failed: " . $e->getMessage()]);
+    exit();
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+
+    //get the user ID that was send through post
     $userId = $_POST['userId'];
 
     try {
+        $logger->log("Received request to delete user with ID: $userId");
+
         $model = new UserModel();
         
-        // Attempt to delete the user
-        $success = $model->deleteUserById($userId);
+        //attempt to delete the user
+        $success = $model->deleteUser($userId);
 
+        //if successful send a true response, otherwise log the failure
         if ($success) {
             $response['success'] = true;
             $response['message'] = 'User deleted successfully';
+            $logger->log("User with ID: $userId deleted successfully.");
+            http_response_code(200);
         } else {
             $response['message'] = 'Failed to delete user';
+            $logger->log("Failed to delete user with ID: $userId. User may not exist.");
+            http_response_code(401);
         }
     } catch (Exception $e) {
         $response['message'] = "Error: " . $e->getMessage();
+        $logger->log("Error while attempting to delete user with ID: $userId. Exception: " . $e->getMessage());
+        http_response_code(500);
     }
 }
 
-// Output JSON response
 echo json_encode($response);
 exit();
 ?>
